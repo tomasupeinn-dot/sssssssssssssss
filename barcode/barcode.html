@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QR Code Scanner — Html5-QRCode</title>
+
+  <!-- Html5-QRCode (CDN) -->
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.4/html5-qrcode.min.js"
+    integrity="sha512-k/KAe4Yff9EUdYI5/IAHlwUswqeipP+Cp5qnrsUjTPCgl51La2/JhyyjNciztD7mWNKLSXci48m7cctATKfLlQ=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer">
+  </script>
+
+  <style>
+    /* シンプルなレイアウト */
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "ヒラギノ角ゴ ProN", "Noto Sans JP", "メイリオ", sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f7f7f7;
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    main {
+      max-width: 900px;
+      width: 100%;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+      padding: 1rem;
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    #reader {
+      width: 100%;
+      min-height: 360px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    #result {
+      padding: 0.5rem 0.75rem;
+      border-left: 1px solid #eee;
+    }
+
+    #result h2 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
+    #result p { word-break: break-all; }
+
+    .controls {
+      margin-top: 0.6rem;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    button {
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      background: #fafafa;
+      cursor: pointer;
+    }
+
+    button:active { transform: translateY(1px); }
+    small.note { display:block; margin-top:0.6rem; color:#666; }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="reader"></div>
+
+    <div id="result">
+      <h2>Scan result</h2>
+      <div id="resultContent">ここに読み取り結果が表示されます。</div>
+
+      <div class="controls">
+        <button id="startBtn">スキャン開始</button>
+        <button id="stopBtn" disabled>停止</button>
+        <button id="clearBtn">消去</button>
+      </div>
+      <small class="note">
+        カメラ許可が必要です。HTTPS または ローカルファイル / localhost で動かしてください。
+      </small>
+    </div>
+  </main>
+
+  <script>
+    // Html5QrcodeScanner を使った最小実装（元記事のサンプルを単一ファイルに統合）
+    let scanner = null;
+
+    // 成功時のコールバック
+    function onScanSuccess(decodedText, decodedResult) {
+      // decodedText に読み取った文字列（URL など）が入ります
+      const el = document.getElementById('resultContent');
+      // リンクを自動で生成（安全のため target=_blank）
+      el.innerHTML = `
+        <strong>読み取り成功</strong>
+        <p><a href="${escapeHtml(decodedText)}" target="_blank" rel="noopener noreferrer">${escapeHtml(decodedText)}</a></p>
+      `;
+
+      // 必要なら一度読み取ったら停止する（元記事の例）
+      if (scanner) {
+        scanner.clear().then(() => {
+          // reader 要素を削除（元の例）ではなくボタン状態を切り替えで制御
+          document.getElementById('startBtn').disabled = false;
+          document.getElementById('stopBtn').disabled = true;
+        }).catch(err => {
+          console.error('clear() error:', err);
+        });
+      }
+    }
+
+    // エラー時のコールバック（オプション）
+    function onScanFailure(error) {
+      // コンソールに出すだけでも良い
+      console.warn('scan failure:', error);
+    }
+
+    // HTML エスケープ（簡易）
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // スキャナーを作成してレンダー
+    function startScanner() {
+      if (scanner) {
+        // 既にある場合は一度クリアしてから再作成
+        scanner.clear().catch(()=>{}).finally(()=> { scanner = null; createAndRender(); });
+      } else {
+        createAndRender();
+      }
+    }
+
+    function createAndRender() {
+      // 第1引数は reader の id（DOM に UI を注入）
+      // オプションは元記事と同様に qrbox と fps を設定
+      scanner = new Html5QrcodeScanner(
+        'reader',
+        {
+          qrbox: { width: 250, height: 250 },
+          fps: 20,
+          // verbose: true // デバッグしたい時有効に
+        },
+        /* verbose= */ false
+      );
+
+      // render(成功コールバック, エラーコールバック)
+      scanner.render(onScanSuccess, onScanFailure);
+
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').disabled = false;
+    }
+
+    // 停止（カメラ停止）
+    function stopScanner() {
+      if (!scanner) return;
+      scanner.clear().then(() => {
+        // clear() が終わったら UI をリセット
+        // Html5QrcodeScanner は reader 内を自分で管理するため、ここでは reader の中身を白紙に
+        const reader = document.getElementById('reader');
+        reader.innerHTML = '';
+        scanner = null;
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+      }).catch(err => {
+        console.error('stop error:', err);
+      });
+    }
+
+    // 結果表示クリア
+    function clearResult() {
+      document.getElementById('resultContent').textContent = 'ここに読み取り結果が表示されます。';
+    }
+
+    // ボタンイベント
+    document.getElementById('startBtn').addEventListener('click', startScanner);
+    document.getElementById('stopBtn').addEventListener('click', stopScanner);
+    document.getElementById('clearBtn').addEventListener('click', clearResult);
+
+    // ページ読み込み時に自動で開始したい場合は次を有効に
+    // window.addEventListener('load', startScanner);
+  </script>
+</body>
+</html>
